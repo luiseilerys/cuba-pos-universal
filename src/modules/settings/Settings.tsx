@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
 import { getSettings, saveSettings, AppSettings } from '../../lib/storage';
+import {
+  InfoBlockKey, DEFAULT_VISIBLE_INFO, INFO_BLOCK_OPTIONS,
+} from '../../lib/series';
 import { showToast } from '../../lib/toast';
 
 export function Settings() {
@@ -9,20 +12,32 @@ export function Settings() {
     rateUSDToCUP: 120,
     ticketFooter: 'Gracias por su compra',
   });
+  const [visibleInfo, setVisibleInfo] = useState<InfoBlockKey[]>(DEFAULT_VISIBLE_INFO);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getSettings()
-      .then(s => setForm({
-        businessName: s.businessName || '',
-        businessPhone: s.businessPhone || '',
-        rateUSDToCUP: s.rateUSDToCUP || 120,
-        ticketFooter: s.ticketFooter != null && s.ticketFooter !== ''
-          ? s.ticketFooter
-          : 'Gracias por su compra',
-      }))
+      .then(s => {
+        setForm({
+          businessName: s.businessName || '',
+          businessPhone: s.businessPhone || '',
+          rateUSDToCUP: s.rateUSDToCUP || 120,
+          ticketFooter: s.ticketFooter != null && s.ticketFooter !== ''
+            ? s.ticketFooter
+            : 'Gracias por su compra',
+        });
+        if (s.visibleInfo && s.visibleInfo.length > 0) {
+          setVisibleInfo(s.visibleInfo as InfoBlockKey[]);
+        }
+      })
       .catch(() => showToast('Error al cargar ajustes', 'error'));
   }, []);
+
+  const toggleInfo = (key: InfoBlockKey) => {
+    setVisibleInfo(prev =>
+      prev.indexOf(key) >= 0 ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
 
   const save = async () => {
     if (saving) return;
@@ -34,6 +49,7 @@ export function Settings() {
         businessPhone: (form.businessPhone || '').trim(),
         rateUSDToCUP: Number(form.rateUSDToCUP) || 120,
         ticketFooter: footer || 'Gracias por su compra',
+        visibleInfo,
       });
       showToast('Ajustes guardados', 'ok');
     } catch (e) {
@@ -43,6 +59,8 @@ export function Settings() {
       setSaving(false);
     }
   };
+
+  const groups = ['Números', 'Gráficos', 'Detalle'];
 
   return (
     <div style={{ height: 'calc(100% - 60px)', overflow: 'auto' }}>
@@ -89,7 +107,49 @@ export function Settings() {
         <p class="muted" style={{ marginBottom: 16 }}>
           Este texto aparece al final de cada ticket de venta.
         </p>
+      </div>
 
+      <div class="card">
+        <h2 style={{ fontSize: 17, marginBottom: 6 }}>Bloques de Información</h2>
+        <p class="muted" style={{ marginBottom: 12 }}>
+          Marca qué resúmenes y gráficos quieres ver en la pestaña Info.
+        </p>
+
+        {groups.map(g => (
+          <div key={g} style={{ marginBottom: 14 }}>
+            <h3 style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              {g}
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {INFO_BLOCK_OPTIONS.filter(o => o.group === g).map(opt => {
+                const on = visibleInfo.indexOf(opt.key) >= 0;
+                return (
+                  <label
+                    key={opt.key}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 10, fontWeight: 600, fontSize: 14,
+                      background: on ? '#ccfbf1' : '#fff',
+                      border: on ? '1px solid #0f766e' : '1px solid var(--border)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => toggleInfo(opt.key)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div class="card">
         <button type="button" class="btn btn-block" onClick={save} disabled={saving}>
           {saving ? 'Guardando…' : 'Guardar ajustes'}
         </button>

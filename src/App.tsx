@@ -64,7 +64,7 @@ export function App() {
         <a href="/">Inicio</a>
         <a href="/pos">POS</a>
         <a href="/inventory">Inventario</a>
-        <a href="/stats">Stats</a>
+        <a href="/stats">Info</a>
         <a href="/cash">Arqueo</a>
         <a href="/settings">Ajustes</a>
       </nav>
