@@ -35,6 +35,85 @@ function BarChart({ points, unit }: { points: SeriesPoint[]; unit: string }) {
   );
 }
 
+/** Gráfico de líneas con SVG simple (compatible Android 5+) */
+function LineChart({ points, unit }: { points: SeriesPoint[]; unit: string }) {
+  const n = points.length;
+  if (n === 0) return <p class="muted">Sin datos</p>;
+
+  const max = Math.max(...points.map(p => p.totalCUP), 1);
+  const W = 300;
+  const H = 120;
+  const padL = 8;
+  const padR = 8;
+  const padT = 12;
+  const padB = 8;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const coords = points.map((p, i) => {
+    const x = padL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+    const y = padT + innerH - (p.totalCUP / max) * innerH;
+    return { x, y, p };
+  });
+
+  const linePoints = coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  // Área bajo la línea
+  const areaPoints = [
+    `${coords[0].x.toFixed(1)},${(padT + innerH).toFixed(1)}`,
+    ...coords.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`),
+    `${coords[coords.length - 1].x.toFixed(1)},${(padT + innerH).toFixed(1)}`,
+  ].join(' ');
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="140" preserveAspectRatio="none" style={{ display: 'block' }}>
+        <polygon points={areaPoints} fill="rgba(15,118,110,0.12)" />
+        <polyline
+          points={linePoints}
+          fill="none"
+          stroke="#0f766e"
+          stroke-width="2.5"
+          stroke-linejoin="round"
+          stroke-linecap="round"
+        />
+        {coords.map((c, i) => (
+          <circle
+            key={i}
+            cx={c.x}
+            cy={c.y}
+            r="4"
+            fill="#0f766e"
+            stroke="#fff"
+            stroke-width="1.5"
+          >
+            <title>{`${c.p.label}: ${c.p.totalCUP.toFixed(0)} ${unit} · ${c.p.count} ventas`}</title>
+          </circle>
+        ))}
+      </svg>
+      <div class="line-labels">
+        {points.map(p => (
+          <span key={p.key} class="line-label" title={`${p.totalCUP.toFixed(0)} ${unit}`}>
+            {p.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SeriesChart({
+  points,
+  unit,
+  type,
+}: {
+  points: SeriesPoint[];
+  unit: string;
+  type: 'bar' | 'line';
+}) {
+  if (type === 'line') return <LineChart points={points} unit={unit} />;
+  return <BarChart points={points} unit={unit} />;
+}
+
 function KpiRow({ title, total, count, avg }: { title: string; total: number; count: number; avg: number }) {
   return (
     <div class="card">
@@ -62,6 +141,7 @@ function KpiRow({ title, total, count, avg }: { title: string; total: number; co
 export function Stats() {
   const [rate, setRate] = useState(120);
   const [visible, setVisible] = useState<InfoBlockKey[]>(DEFAULT_VISIBLE_INFO);
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
   const [stats, setStats] = useState<BuiltStats | null>(null);
   const [days, setDays] = useState<SeriesPoint[]>([]);
   const [weeks, setWeeks] = useState<SeriesPoint[]>([]);
@@ -77,6 +157,7 @@ export function Stats() {
       const s = await getSettings();
       const r = s.rateUSDToCUP || 120;
       setRate(r);
+      setChartType(s.chartType === 'line' ? 'line' : 'bar');
       const vis =
         s.visibleInfo && s.visibleInfo.length > 0
           ? (s.visibleInfo as InfoBlockKey[])
@@ -124,7 +205,7 @@ export function Stats() {
           </button>
         </div>
         <p class="muted" style={{ marginTop: 6 }}>
-          Resúmenes y gráficos por día, semana, mes y año. Elige qué ver en Ajustes.
+          Resúmenes y gráficos ({chartType === 'line' ? 'líneas' : 'barras'}). Cambia el tipo en Ajustes.
         </p>
       </div>
 
@@ -133,12 +214,7 @@ export function Stats() {
       {!loading && (
         <>
           {show('kpiToday') && stats && (
-            <KpiRow
-              title="Hoy"
-              total={stats.totalCUP}
-              count={stats.salesCount}
-              avg={stats.avgTicket}
-            />
+            <KpiRow title="Hoy" total={stats.totalCUP} count={stats.salesCount} avg={stats.avgTicket} />
           )}
 
           {show('kpiWeek') && (
@@ -175,7 +251,7 @@ export function Stats() {
                 Total período: {sumDays.totalCUP.toFixed(0)} CUP · {sumDays.count} ventas
                 {sumDays.best.totalCUP > 0 ? ` · Mejor: ${sumDays.best.label}` : ''}
               </p>
-              <BarChart points={days} unit="CUP" />
+              <SeriesChart points={days} unit="CUP" type={chartType} />
             </div>
           )}
 
@@ -185,7 +261,7 @@ export function Stats() {
               <p class="muted" style={{ marginBottom: 10 }}>
                 Total: {sumWeeks.totalCUP.toFixed(0)} CUP · {sumWeeks.count} ventas
               </p>
-              <BarChart points={weeks} unit="CUP" />
+              <SeriesChart points={weeks} unit="CUP" type={chartType} />
             </div>
           )}
 
@@ -195,7 +271,7 @@ export function Stats() {
               <p class="muted" style={{ marginBottom: 10 }}>
                 Total: {sumMonths.totalCUP.toFixed(0)} CUP · {sumMonths.count} ventas
               </p>
-              <BarChart points={months} unit="CUP" />
+              <SeriesChart points={months} unit="CUP" type={chartType} />
             </div>
           )}
 
@@ -205,7 +281,7 @@ export function Stats() {
               <p class="muted" style={{ marginBottom: 10 }}>
                 Total: {sumYears.totalCUP.toFixed(0)} CUP · {sumYears.count} ventas
               </p>
-              <BarChart points={years} unit="CUP" />
+              <SeriesChart points={years} unit="CUP" type={chartType} />
             </div>
           )}
 
@@ -292,7 +368,7 @@ export function Stats() {
 
           <div class="card">
             <p class="muted" style={{ margin: 0 }}>
-              Para mostrar u ocultar bloques, ve a <strong>Ajustes → Bloques de Información</strong>.
+              Tipo de gráfico y bloques: <strong>Ajustes</strong>.
             </p>
           </div>
         </>

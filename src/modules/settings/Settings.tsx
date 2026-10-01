@@ -13,6 +13,7 @@ export function Settings() {
     ticketFooter: 'Gracias por su compra',
   });
   const [visibleInfo, setVisibleInfo] = useState<InfoBlockKey[]>(DEFAULT_VISIBLE_INFO);
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function Settings() {
         if (s.visibleInfo && s.visibleInfo.length > 0) {
           setVisibleInfo(s.visibleInfo as InfoBlockKey[]);
         }
+        setChartType(s.chartType === 'line' ? 'line' : 'bar');
       })
       .catch(() => showToast('Error al cargar ajustes', 'error'));
   }, []);
@@ -50,6 +52,7 @@ export function Settings() {
         rateUSDToCUP: Number(form.rateUSDToCUP) || 120,
         ticketFooter: footer || 'Gracias por su compra',
         visibleInfo,
+        chartType,
       });
       showToast('Ajustes guardados', 'ok');
     } catch (e) {
@@ -107,6 +110,29 @@ export function Settings() {
         <p class="muted" style={{ marginBottom: 16 }}>
           Este texto aparece al final de cada ticket de venta.
         </p>
+      </div>
+
+      <div class="card">
+        <h2 style={{ fontSize: 17, marginBottom: 6 }}>Tipo de gráfico</h2>
+        <p class="muted" style={{ marginBottom: 12 }}>
+          Cómo se muestran los gráficos en la pestaña Info.
+        </p>
+        <div class="grid-2">
+          <button
+            type="button"
+            class={`btn ${chartType === 'bar' ? '' : 'btn-secondary'}`}
+            onClick={() => setChartType('bar')}
+          >
+            Barras
+          </button>
+          <button
+            type="button"
+            class={`btn ${chartType === 'line' ? '' : 'btn-secondary'}`}
+            onClick={() => setChartType('line')}
+          >
+            Líneas
+          </button>
+        </div>
       </div>
 
       <div class="card">
