@@ -85,6 +85,8 @@ export interface AppSettings {
   ticketFooter?: string;
   visibleStats?: StatKey[];
   visibleInfo?: string[];
+  /** Tipo de gráfico en Info: barras o líneas */
+  chartType?: 'bar' | 'line';
 }
 
 interface CubaPOSDB extends DBSchema {
