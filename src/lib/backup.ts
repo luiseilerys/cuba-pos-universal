@@ -9,6 +9,8 @@ import {
 
 const BACKUP_FILE = 'cuba-pos-backup.json';
 const BACKUP_META_KEY = 'last_backup_at';
+/** Límite aproximado para no reventar Preferences en Android */
+const PREFS_BLOB_MAX = 800_000;
 
 export interface BackupPayload {
   version: 1;
@@ -52,6 +54,22 @@ async function collectPayload(): Promise<BackupPayload> {
   };
 }
 
+async function trySetPrefsBlob(data: string) {
+  try {
+    if (data.length > PREFS_BLOB_MAX) {
+      // Solo metadatos si es demasiado grande
+      await Preferences.remove({ key: 'backup_blob_v1' });
+      return;
+    }
+    await Preferences.set({ key: 'backup_blob_v1', value: data });
+  } catch (e) {
+    console.warn('prefs blob too large or failed', e);
+    try {
+      await Preferences.remove({ key: 'backup_blob_v1' });
+    } catch { /* */ }
+  }
+}
+
 /** Escribe el respaldo en almacenamiento del dispositivo (varias ubicaciones). */
 export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: string; error?: string }> {
   try {
@@ -59,7 +77,7 @@ export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: strin
     const data = JSON.stringify(payload);
 
     await Preferences.set({ key: BACKUP_META_KEY, value: String(payload.exportedAt) });
-    await Preferences.set({ key: 'backup_blob_v1', value: data });
+    await trySetPrefsBlob(data);
 
     if (!Capacitor.isNativePlatform()) {
       try {
@@ -94,6 +112,12 @@ export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: strin
     console.error(e);
     return { ok: false, error: e?.message || String(e) };
   }
+}
+
+/** Solo genera el texto JSON (no escribe a disco). Más fiable para copiar. */
+export async function buildBackupText(): Promise<string> {
+  const payload = await collectPayload();
+  return JSON.stringify(payload, null, 2);
 }
 
 /** Lee el respaldo más reciente disponible. */
@@ -137,7 +161,6 @@ export async function readBackupFromDevice(): Promise<BackupPayload | null> {
   return null;
 }
 
-/** Restaura productos, ventas, turnos, etc. desde un payload. */
 export async function restoreFromPayload(payload: BackupPayload): Promise<void> {
   if (!payload || payload.version !== 1) {
     throw new Error('Respaldo inválido');
@@ -184,14 +207,16 @@ export async function restoreFromPayload(payload: BackupPayload): Promise<void> 
     await Preferences.remove({ key: 'active_shift_id' });
   }
 
-  await Preferences.set({ key: 'backup_blob_v1', value: JSON.stringify(payload) });
+  const data = JSON.stringify(payload);
   await Preferences.set({ key: BACKUP_META_KEY, value: String(Date.now()) });
+  await trySetPrefsBlob(data);
 }
 
 export async function exportBackupText(): Promise<string> {
-  await writeBackupToDevice();
-  const payload = await collectPayload();
-  return JSON.stringify(payload, null, 2);
+  const text = await buildBackupText();
+  // Intentar guardar en disco en segundo plano (no debe tumbar la copia)
+  writeBackupToDevice().catch(() => {});
+  return text;
 }
 
 export async function importBackupText(text: string): Promise<void> {
@@ -200,7 +225,6 @@ export async function importBackupText(text: string): Promise<void> {
   await writeBackupToDevice();
 }
 
-/** Si la BD está vacía pero hay respaldo, devolver el payload. */
 export async function detectEmptyDbWithBackup(): Promise<BackupPayload | null> {
   const products = await getAllProducts();
   const sales = await getAllSales();
@@ -222,4 +246,39 @@ export async function getLastBackupAt(): Promise<number | null> {
   if (!value) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Copia texto al portapapeles con varios fallbacks (Android WebView). */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  // 1) Clipboard API moderna
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) {
+    console.warn('clipboard.writeText failed', e);
+  }
+
+  // 2) execCommand + textarea temporal
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', 'true');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) return true;
+  } catch (e) {
+    console.warn('execCommand copy failed', e);
+  }
+
+  return false;
 }

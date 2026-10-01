@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { getSettings, saveSettings, AppSettings } from '../../lib/storage';
 import {
   InfoBlockKey, DEFAULT_VISIBLE_INFO, INFO_BLOCK_OPTIONS,
@@ -6,7 +6,7 @@ import {
 import { showToast } from '../../lib/toast';
 import {
   writeBackupToDevice, exportBackupText, importBackupText,
-  getLastBackupAt, scheduleAutoBackup,
+  getLastBackupAt, scheduleAutoBackup, copyTextToClipboard,
 } from '../../lib/backup';
 
 export function Settings() {
@@ -25,9 +25,16 @@ export function Settings() {
   const [importText, setImportText] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [exportText, setExportText] = useState('');
+  const exportRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshBackupMeta = async () => {
-    setLastBackup(await getLastBackupAt());
+    try {
+      setLastBackup(await getLastBackupAt());
+    } catch {
+      setLastBackup(null);
+    }
   };
 
   useEffect(() => {
@@ -122,17 +129,30 @@ export function Settings() {
     try {
       const text = await exportBackupText();
       await refreshBackupMeta();
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        showToast('Respaldo copiado al portapapeles', 'ok');
+      setExportText(text);
+      setShowExport(true);
+
+      const copied = await copyTextToClipboard(text);
+      if (copied) {
+        showToast('Respaldo copiado. También puedes seleccionarlo abajo.', 'ok');
       } else {
-        setImportText(text);
-        setShowImport(true);
-        showToast('Copia el texto del respaldo manualmente', 'info');
+        showToast('Selecciona el texto y cópialo (mantener pulsado)', 'info');
       }
+
+      // Enfocar y seleccionar el textarea para Android
+      setTimeout(() => {
+        const el = exportRef.current;
+        if (el) {
+          el.focus();
+          el.select();
+          try {
+            el.setSelectionRange(0, text.length);
+          } catch { /* */ }
+        }
+      }, 100);
     } catch (e) {
       console.error(e);
-      showToast('Error al exportar', 'error');
+      showToast('Error al generar el respaldo', 'error');
     } finally {
       setBackupBusy(false);
     }
@@ -213,18 +233,18 @@ export function Settings() {
         <h2 style={{ fontSize: 17, marginBottom: 6 }}>Datos y respaldos</h2>
         <p class="muted" style={{ marginBottom: 10 }}>
           Los datos se guardan en este teléfono. Al <strong>actualizar</strong> la app se conservan.
-          Antes de <strong>desinstalar</strong>, exporta un respaldo y guárdalo (WhatsApp, notas, USB).
+          Antes de <strong>desinstalar</strong>, copia el respaldo y guárdalo (WhatsApp, notas, USB).
         </p>
         {lastBackup && (
           <p class="muted" style={{ marginBottom: 10 }}>
-            Último respaldo automático: {new Date(lastBackup).toLocaleString('es-CU')}
+            Último respaldo: {new Date(lastBackup).toLocaleString('es-CU')}
           </p>
         )}
         <button type="button" class="btn btn-block" disabled={backupBusy} onClick={doBackupNow}>
           {backupBusy ? 'Guardando…' : 'Guardar respaldo ahora'}
         </button>
         <button type="button" class="btn btn-secondary btn-block" style={{ marginTop: 8 }} disabled={backupBusy} onClick={doExportCopy}>
-          Copiar respaldo (JSON)
+          {backupBusy ? 'Generando…' : 'Copiar / ver respaldo (JSON)'}
         </button>
         <button type="button" class="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={() => setShowImport(true)}>
           Restaurar desde texto JSON
@@ -352,12 +372,48 @@ export function Settings() {
         </p>
       </div>
 
+      {showExport && (
+        <div class="modal-backdrop">
+          <div class="modal-sheet">
+            <h2 style={{ fontSize: 18, marginBottom: 8 }}>Respaldo JSON</h2>
+            <p class="muted" style={{ marginBottom: 10 }}>
+              Mantén pulsado el texto → Seleccionar todo → Copiar. Luego pégalo en Notas o WhatsApp.
+            </p>
+            <textarea
+              ref={exportRef}
+              class="input"
+              rows={10}
+              readOnly
+              value={exportText}
+              onFocus={e => {
+                const el = e.target as HTMLTextAreaElement;
+                el.select();
+              }}
+              style={{ marginBottom: 12, minHeight: 160, fontFamily: 'monospace', fontSize: 11 }}
+            />
+            <button
+              type="button"
+              class="btn btn-block"
+              onClick={async () => {
+                const ok = await copyTextToClipboard(exportText);
+                showToast(ok ? 'Copiado al portapapeles' : 'Selecciona el texto y copia manualmente', ok ? 'ok' : 'info');
+              }}
+            >
+              Intentar copiar de nuevo
+            </button>
+            <button type="button" class="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={() => setShowExport(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
       {showImport && (
         <div class="modal-backdrop">
           <div class="modal-sheet">
             <h2 style={{ fontSize: 18, marginBottom: 8 }}>Restaurar respaldo</h2>
             <p class="muted" style={{ marginBottom: 10 }}>
-              Pega aquí el JSON del respaldo (copiado antes). Esto reemplaza los datos actuales.
+              Pega aquí el JSON del respaldo. Esto reemplaza los datos actuales.
             </p>
             <textarea
               class="input"
