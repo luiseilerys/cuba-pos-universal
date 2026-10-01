@@ -14,6 +14,8 @@ export function Settings() {
   });
   const [visibleInfo, setVisibleInfo] = useState<InfoBlockKey[]>(DEFAULT_VISIBLE_INFO);
   const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+  const [sellers, setSellers] = useState<string[]>([]);
+  const [newSeller, setNewSeller] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export function Settings() {
           setVisibleInfo(s.visibleInfo as InfoBlockKey[]);
         }
         setChartType(s.chartType === 'line' ? 'line' : 'bar');
+        setSellers(Array.isArray(s.sellers) ? s.sellers.filter(Boolean) : []);
       })
       .catch(() => showToast('Error al cargar ajustes', 'error'));
   }, []);
@@ -39,6 +42,25 @@ export function Settings() {
     setVisibleInfo(prev =>
       prev.indexOf(key) >= 0 ? prev.filter(k => k !== key) : [...prev, key]
     );
+  };
+
+  const addSeller = () => {
+    const name = newSeller.trim();
+    if (!name) {
+      showToast('Escribe el nombre del vendedor', 'info');
+      return;
+    }
+    const exists = sellers.some(s => s.toLowerCase() === name.toLowerCase());
+    if (exists) {
+      showToast('Ese vendedor ya está en la lista', 'info');
+      return;
+    }
+    setSellers(prev => [...prev, name]);
+    setNewSeller('');
+  };
+
+  const removeSeller = (name: string) => {
+    setSellers(prev => prev.filter(s => s !== name));
   };
 
   const save = async () => {
@@ -53,6 +75,7 @@ export function Settings() {
         ticketFooter: footer || 'Gracias por su compra',
         visibleInfo,
         chartType,
+        sellers,
       });
       showToast('Ajustes guardados', 'ok');
     } catch (e) {
@@ -110,6 +133,51 @@ export function Settings() {
         <p class="muted" style={{ marginBottom: 16 }}>
           Este texto aparece al final de cada ticket de venta.
         </p>
+      </div>
+
+      <div class="card">
+        <h2 style={{ fontSize: 17, marginBottom: 6 }}>Vendedores</h2>
+        <p class="muted" style={{ marginBottom: 12 }}>
+          Lista de vendedores para elegir al abrir el turno. El nombre aparece en el ticket.
+        </p>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            class="input"
+            style={{ flex: 1, marginBottom: 0 }}
+            value={newSeller}
+            placeholder="Nombre del vendedor"
+            onInput={e => setNewSeller((e.target as HTMLInputElement).value)}
+            onKeyDown={e => {
+              if ((e as KeyboardEvent).key === 'Enter') {
+                e.preventDefault();
+                addSeller();
+              }
+            }}
+          />
+          <button type="button" class="btn" style={{ flexShrink: 0, minWidth: 90 }} onClick={addSeller}>
+            Añadir
+          </button>
+        </div>
+
+        {sellers.length === 0 && (
+          <p class="muted">No hay vendedores. Añade al menos uno para usarlo al abrir turno.</p>
+        )}
+        {sellers.map(name => (
+          <div
+            key={name}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', marginBottom: 8, borderRadius: 10,
+              border: '1px solid var(--border)', background: '#fff',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>{name}</span>
+            <button type="button" class="btn btn-danger btn-sm" onClick={() => removeSeller(name)}>
+              Quitar
+            </button>
+          </div>
+        ))}
       </div>
 
       <div class="card">
@@ -182,23 +250,9 @@ export function Settings() {
       </div>
 
       <div class="card">
-        <h3 style={{ fontSize: 15, marginBottom: 8 }}>Vista previa del pie</h3>
-        <pre style={{
-          whiteSpace: 'pre-wrap', fontFamily: 'monospace', fontSize: 13,
-          background: '#f8fafc', padding: 12, borderRadius: 8, margin: 0,
-        }}>
-          {(form.businessName || 'Tu negocio') + '\n'}
-          {'------------------------\n'}
-          {'TOTAL: 100.00 CUP\n'}
-          {(form.ticketFooter || 'Gracias por su compra')}
-        </pre>
-      </div>
-
-      <div class="card">
         <h3 style={{ fontSize: 15, marginBottom: 8 }}>Sobre esta app</h3>
         <p class="muted">
           Cuba POS Universal · Offline-first · Multimoneda CUP/USD · Compatible Android 5+.
-          Los datos se guardan en este dispositivo y se sincronizan cuando haya conexión.
         </p>
       </div>
     </div>
