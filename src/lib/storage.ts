@@ -52,6 +52,7 @@ export interface Sale {
   changeCUP: number;
   paymentMethod: string;
   createdAt: number;
+  sellerName?: string;
 }
 
 export interface Shift {
@@ -62,6 +63,7 @@ export interface Shift {
   openingFloatUSD: number;
   status: 'open' | 'closed';
   notes?: string;
+  sellerName?: string;
 }
 
 export type StatKey =
@@ -85,8 +87,9 @@ export interface AppSettings {
   ticketFooter?: string;
   visibleStats?: StatKey[];
   visibleInfo?: string[];
-  /** Tipo de gráfico en Info: barras o líneas */
   chartType?: 'bar' | 'line';
+  /** Lista de nombres de vendedores */
+  sellers?: string[];
 }
 
 interface CubaPOSDB extends DBSchema {
@@ -247,7 +250,11 @@ export async function getAllShifts(): Promise<Shift[]> {
   return (await db.getAll('shifts')).sort((a, b) => b.openedAt - a.openedAt);
 }
 
-export async function openShift(openingFloatCUP: number = 0, openingFloatUSD: number = 0): Promise<Shift> {
+export async function openShift(
+  openingFloatCUP: number = 0,
+  openingFloatUSD: number = 0,
+  sellerName?: string,
+): Promise<Shift> {
   const existing = await getOpenShift();
   if (existing) {
     await Preferences.set({ key: ACTIVE_SHIFT_KEY, value: existing.id });
@@ -261,6 +268,7 @@ export async function openShift(openingFloatCUP: number = 0, openingFloatUSD: nu
     openingFloatCUP: Number.isFinite(floatCUP) ? Math.max(0, floatCUP) : 0,
     openingFloatUSD: Number.isFinite(floatUSD) ? Math.max(0, floatUSD) : 0,
     status: 'open',
+    sellerName: sellerName ? String(sellerName).trim() : undefined,
   };
   const db = await getDB();
   await db.put('shifts', shift);
@@ -395,7 +403,7 @@ export interface BuiltStats {
   topProducts: { name: string; qty: number; amountCUP: number }[];
   byPayment: { method: string; count: number; amountCUP: number }[];
   byCurrency: { CUP: number; USD: number; countCUP: number; countUSD: number };
-  shiftInfo: { open: boolean; openedAt?: number; floatCUP?: number; salesCUP?: number; salesCount?: number } | null;
+  shiftInfo: { open: boolean; openedAt?: number; floatCUP?: number; salesCUP?: number; salesCount?: number; sellerName?: string } | null;
   lowStock: Product[];
   inventoryValueCUP: number;
 }
@@ -467,6 +475,7 @@ export async function buildStats(period: PeriodKey, rate = 120): Promise<BuiltSt
       floatCUP: open.openingFloatCUP,
       salesCount: shiftSales.length,
       salesCUP: shiftSales.reduce((s, x) => s + saleToCUP(x, rate), 0),
+      sellerName: open.sellerName,
     };
   } else {
     shiftInfo = { open: false };
