@@ -1,4 +1,4 @@
-import { getAllSales, saleToCUP, Sale } from './storage';
+import { getAllSales, saleToCUP } from './storage';
 
 export interface SeriesPoint {
   key: string;

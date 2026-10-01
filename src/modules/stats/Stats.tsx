@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import {
-  buildStats, BuiltStats, getSettings, saveSettings,
+  buildStats, BuiltStats, getSettings,
 } from '../../lib/storage';
 import {
   seriesByDay, seriesByWeek, seriesByMonth, seriesByYear,
@@ -110,7 +110,6 @@ export function Stats() {
   const sumMonths = summarizeSeries(months);
   const sumYears = summarizeSeries(years);
 
-  // KPI año = serie del año actual (último punto)
   const yearNow = years.length ? years[years.length - 1] : { totalCUP: 0, count: 0 };
   const monthNow = months.length ? months[months.length - 1] : { totalCUP: 0, count: 0 };
   const weekNow = weeks.length ? weeks[weeks.length - 1] : { totalCUP: 0, count: 0 };

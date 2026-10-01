@@ -29,7 +29,9 @@ export function POS() {
   const [closing, setClosing] = useState(false);
   const [shiftSummary, setShiftSummary] = useState({ salesCount: 0, totalCUP: 0, floatCUP: 0, openedAt: 0 });
   const [showPay, setShowPay] = useState(false);
-  const [discount, setDiscount] = useState(0);
+  /** Valor del campo descuento (monto o % según discountMode) */
+  const [discountInput, setDiscountInput] = useState(0);
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
   const [paidCUP, setPaidCUP] = useState(0);
   const [paidUSD, setPaidUSD] = useState(0);
   const [rate, setRate] = useState(120);
@@ -108,7 +110,17 @@ export function POS() {
   const removeItem = (id: string) => setCart(prev => prev.filter(i => i.id !== id));
 
   const subtotal = cart.reduce((s, i) => s + (currency === 'CUP' ? i.priceCUP : i.priceUSD) * i.qty, 0);
-  const total = Math.max(0, subtotal - discount);
+
+  /** Descuento efectivo en moneda de la venta */
+  const discountAmount = (() => {
+    if (discountMode === 'percent') {
+      const pct = Math.min(100, Math.max(0, discountInput));
+      return Math.round(subtotal * (pct / 100) * 100) / 100;
+    }
+    return Math.min(subtotal, Math.max(0, discountInput));
+  })();
+
+  const total = Math.max(0, subtotal - discountAmount);
 
   const doOpenShift = async () => {
     if (opening) return;
@@ -177,9 +189,11 @@ export function POS() {
       return;
     }
     if (cart.length === 0) return;
-    setDiscount(0);
-    setPaidCUP(currency === 'CUP' ? total : 0);
-    setPaidUSD(currency === 'USD' ? total : 0);
+    setDiscountInput(0);
+    setDiscountMode('amount');
+    const t = Math.max(0, subtotal);
+    setPaidCUP(currency === 'CUP' ? t : 0);
+    setPaidUSD(currency === 'USD' ? t : 0);
     setShowPay(true);
   };
 
@@ -196,7 +210,6 @@ export function POS() {
       return;
     }
     try {
-      // Releer ajustes por si se cambió el pie del ticket
       const s = await getSettings();
       const name = s.businessName || businessName;
       const phone = s.businessPhone || businessPhone;
@@ -215,7 +228,7 @@ export function POS() {
         })),
         currency,
         subtotal,
-        discount,
+        discount: discountAmount,
         total,
         paidCUP,
         paidUSD,
@@ -228,6 +241,13 @@ export function POS() {
       await deductStockForSale(sale.items);
       await enqueue('sale', sale);
 
+      const discLabel =
+        discountAmount > 0
+          ? discountMode === 'percent'
+            ? `Descuento: -${discountAmount.toFixed(2)} (${discountInput}%)`
+            : `Descuento: -${discountAmount.toFixed(2)}`
+          : '';
+
       const lines = [
         name,
         phone ? `Tel: ${phone}` : '',
@@ -235,7 +255,7 @@ export function POS() {
         '------------------------',
         ...sale.items.map(i => `${i.qty}x ${i.name}`),
         '------------------------',
-        discount > 0 ? `Descuento: -${discount.toFixed(2)}` : '',
+        discLabel,
         `TOTAL: ${total.toFixed(2)} ${currency}`,
         paidCUP > 0 ? `Pagado CUP: ${paidCUP.toFixed(2)}` : '',
         paidUSD > 0 ? `Pagado USD: ${paidUSD.toFixed(2)}` : '',
@@ -327,7 +347,7 @@ export function POS() {
       <div class="card" style={{ marginTop: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 20, fontWeight: 700, marginBottom: 10 }}>
           <span>Total</span>
-          <span>{total.toFixed(2)} {currency}</span>
+          <span>{subtotal.toFixed(2)} {currency}</span>
         </div>
         <button type="button" class="btn btn-block" onClick={openPay} disabled={cart.length === 0}>
           Cobrar
@@ -394,11 +414,54 @@ export function POS() {
         <div class="modal-backdrop">
           <div class="modal-sheet">
             <h2 style={{ fontSize: 18, marginBottom: 4 }}>Cobrar</h2>
-            <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>{total.toFixed(2)} {currency}</p>
-            <label class="muted">Descuento ({currency})</label>
-            <input class="input" type="number" min="0" value={discount || ''}
-              onInput={e => setDiscount(Math.max(0, parseFloat((e.target as HTMLInputElement).value) || 0))}
-              style={{ marginBottom: 10 }} />
+            <p class="muted" style={{ marginBottom: 4 }}>Subtotal: {subtotal.toFixed(2)} {currency}</p>
+            <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Total: {total.toFixed(2)} {currency}</p>
+
+            <label class="muted">Tipo de descuento</label>
+            <div class="grid-2" style={{ marginBottom: 10 }}>
+              <button
+                type="button"
+                class={`btn btn-sm ${discountMode === 'amount' ? '' : 'btn-secondary'}`}
+                onClick={() => { setDiscountMode('amount'); setDiscountInput(0); }}
+              >
+                Monto ({currency})
+              </button>
+              <button
+                type="button"
+                class={`btn btn-sm ${discountMode === 'percent' ? '' : 'btn-secondary'}`}
+                onClick={() => { setDiscountMode('percent'); setDiscountInput(0); }}
+              >
+                Porcentaje (%)
+              </button>
+            </div>
+
+            <label class="muted">
+              {discountMode === 'percent' ? 'Descuento (%)' : `Descuento (${currency})`}
+            </label>
+            <input
+              class="input"
+              type="number"
+              min="0"
+              max={discountMode === 'percent' ? 100 : undefined}
+              step={discountMode === 'percent' ? '1' : '0.01'}
+              value={discountInput || ''}
+              onInput={e => {
+                const n = parseFloat((e.target as HTMLInputElement).value) || 0;
+                if (discountMode === 'percent') {
+                  setDiscountInput(Math.min(100, Math.max(0, n)));
+                } else {
+                  setDiscountInput(Math.max(0, n));
+                }
+              }}
+              style={{ marginBottom: 6 }}
+            />
+            {discountAmount > 0 && (
+              <p class="muted" style={{ marginBottom: 10 }}>
+                Descuento aplicado: −{discountAmount.toFixed(2)} {currency}
+                {discountMode === 'percent' ? ` (${discountInput}%)` : ''}
+              </p>
+            )}
+
             <label class="muted">Paga en CUP</label>
             <input class="input" type="number" min="0" value={paidCUP || ''}
               onInput={e => setPaidCUP(parseFloat((e.target as HTMLInputElement).value) || 0)}
