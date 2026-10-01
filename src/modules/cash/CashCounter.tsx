@@ -23,7 +23,11 @@ const USD_DENOMS = [
 export function CashCounter() {
   const [currency, setCurrency] = useState<'CUP' | 'USD'>('CUP');
   const [counts, setCounts] = useState<Record<number, number>>({});
+  /** Esperado siempre en la moneda seleccionada */
   const [expected, setExpected] = useState(0);
+  /** Esperado del turno en CUP (base) */
+  const [expectedCUP, setExpectedCUP] = useState(0);
+  const [rate, setRate] = useState(120);
   const [shiftOpen, setShiftOpen] = useState(false);
   const [openingFloat, setOpeningFloat] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -32,15 +36,20 @@ export function CashCounter() {
     try {
       const shift = await getOpenShift();
       const s = await getSettings();
-      const rate = s.rateUSDToCUP || 120;
+      const r = s.rateUSDToCUP || 120;
+      setRate(r);
       if (shift) {
         setShiftOpen(true);
         setOpeningFloat(shift.openingFloatCUP);
-        const salesCUP = await getShiftSalesTotalCUP(shift.id, rate);
-        setExpected(Math.round((shift.openingFloatCUP + salesCUP) * 100) / 100);
+        const salesCUP = await getShiftSalesTotalCUP(shift.id, r);
+        const cup = Math.round((shift.openingFloatCUP + salesCUP) * 100) / 100;
+        setExpectedCUP(cup);
+        // Mostrar esperado en la moneda activa
+        setExpected(currency === 'USD' && r > 0 ? Math.round((cup / r) * 100) / 100 : cup);
       } else {
         setShiftOpen(false);
         setOpeningFloat(0);
+        setExpectedCUP(0);
       }
     } catch (e) {
       console.error(e);
@@ -51,6 +60,17 @@ export function CashCounter() {
   useEffect(() => {
     refreshShift();
   }, []);
+
+  const switchCurrency = (next: 'CUP' | 'USD') => {
+    setCurrency(next);
+    setCounts({});
+    // Convertir esperado entre monedas
+    if (next === 'USD' && rate > 0) {
+      setExpected(Math.round((expectedCUP / rate) * 100) / 100);
+    } else {
+      setExpected(expectedCUP);
+    }
+  };
 
   const denoms = currency === 'CUP' ? CUP_DENOMS : USD_DENOMS;
 
@@ -134,15 +154,15 @@ export function CashCounter() {
           <h2 style={{ fontSize: 18 }}>Arqueo de caja</h2>
           <div class="grid-2" style={{ width: 130 }}>
             <button type="button" class={`btn btn-sm ${currency === 'CUP' ? '' : 'btn-secondary'}`}
-              onClick={() => { setCurrency('CUP'); setCounts({}); }}>CUP</button>
+              onClick={() => switchCurrency('CUP')}>CUP</button>
             <button type="button" class={`btn btn-sm ${currency === 'USD' ? '' : 'btn-secondary'}`}
-              onClick={() => { setCurrency('USD'); setCounts({}); }}>USD</button>
+              onClick={() => switchCurrency('USD')}>USD</button>
           </div>
         </div>
 
         <p class="muted" style={{ marginTop: 8 }}>
           {shiftOpen
-            ? 'El monto esperado se rellena con fondo + ventas del turno.'
+            ? 'El monto esperado se rellena con fondo + ventas del turno (convertido si usas USD).'
             : 'Puedes arquear igual. Abre turno en POS si quieres vincularlo.'}
         </p>
 
