@@ -22,14 +22,18 @@ export function POS() {
   const [currency, setCurrency] = useState<'CUP' | 'USD'>('CUP');
   const [search, setSearch] = useState('');
   const [shiftOpen, setShiftOpen] = useState(false);
+  const [currentSeller, setCurrentSeller] = useState('');
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [floatCUP, setFloatCUP] = useState(0);
+  const [sellers, setSellers] = useState<string[]>([]);
+  const [selectedSeller, setSelectedSeller] = useState('');
   const [opening, setOpening] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [shiftSummary, setShiftSummary] = useState({ salesCount: 0, totalCUP: 0, floatCUP: 0, openedAt: 0 });
+  const [shiftSummary, setShiftSummary] = useState({
+    salesCount: 0, totalCUP: 0, floatCUP: 0, openedAt: 0, sellerName: '',
+  });
   const [showPay, setShowPay] = useState(false);
-  /** Valor del campo descuento (monto o % según discountMode) */
   const [discountInput, setDiscountInput] = useState(0);
   const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
   const [paidCUP, setPaidCUP] = useState(0);
@@ -48,6 +52,7 @@ export function POS() {
       const shift = await getOpenShift();
       const isOpen = !!shift;
       setShiftOpen(isOpen);
+      setCurrentSeller(shift?.sellerName || '');
       if (!isOpen) setShowOpenShift(true);
       else setShowOpenShift(false);
       const s = await getSettings();
@@ -59,6 +64,11 @@ export function POS() {
           ? String(s.ticketFooter).trim()
           : 'Gracias por su compra'
       );
+      const listSellers = Array.isArray(s.sellers) ? s.sellers.filter(Boolean) : [];
+      setSellers(listSellers);
+      if (listSellers.length > 0 && !selectedSeller) {
+        setSelectedSeller(listSellers[0]);
+      }
     } catch (e) {
       console.error(e);
       showToast('Error al cargar datos', 'error');
@@ -111,7 +121,6 @@ export function POS() {
 
   const subtotal = cart.reduce((s, i) => s + (currency === 'CUP' ? i.priceCUP : i.priceUSD) * i.qty, 0);
 
-  /** Descuento efectivo en moneda de la venta */
   const discountAmount = (() => {
     if (discountMode === 'percent') {
       const pct = Math.min(100, Math.max(0, discountInput));
@@ -124,14 +133,23 @@ export function POS() {
 
   const doOpenShift = async () => {
     if (opening) return;
+    if (sellers.length > 0 && !selectedSeller) {
+      showToast('Selecciona un vendedor', 'info');
+      return;
+    }
     setOpening(true);
     try {
       const amount = Number(floatCUP);
       const safe = Number.isFinite(amount) && amount >= 0 ? amount : 0;
-      await openShift(safe, 0);
+      const seller = selectedSeller || undefined;
+      await openShift(safe, 0, seller);
       setShiftOpen(true);
+      setCurrentSeller(seller || '');
       setShowOpenShift(false);
-      showToast(safe === 0 ? 'Turno abierto (sin fondo)' : `Turno abierto · fondo ${safe} CUP`, 'ok');
+      const msg = seller
+        ? `Turno abierto · ${seller}` + (safe > 0 ? ` · fondo ${safe} CUP` : '')
+        : (safe === 0 ? 'Turno abierto (sin fondo)' : `Turno abierto · fondo ${safe} CUP`);
+      showToast(msg, 'ok');
     } catch (e) {
       console.error('openShift error', e);
       showToast('No se pudo abrir el turno. Reintenta.', 'error');
@@ -157,6 +175,7 @@ export function POS() {
         totalCUP,
         floatCUP: shift.openingFloatCUP,
         openedAt: shift.openedAt,
+        sellerName: shift.sellerName || '',
       });
       setShowCloseShift(true);
     } catch (e) {
@@ -171,6 +190,7 @@ export function POS() {
     try {
       const closed = await closeOpenShift();
       setShiftOpen(false);
+      setCurrentSeller('');
       setShowCloseShift(false);
       setCart([]);
       showToast(closed ? 'Turno cerrado' : 'No había turno abierto', closed ? 'ok' : 'info');
@@ -220,6 +240,7 @@ export function POS() {
       const r = s.rateUSDToCUP || rate;
 
       const shift = await getOpenShift();
+      const seller = shift?.sellerName || currentSeller || '';
       const sale: Sale = {
         id: newId(),
         shiftId: shift?.id,
@@ -235,6 +256,7 @@ export function POS() {
         changeCUP: currency === 'CUP' ? changeAmount : changeAmount * r,
         paymentMethod: paidCUP > 0 && paidUSD > 0 ? 'mixto' : paidUSD > 0 ? 'efectivo_usd' : 'efectivo_cup',
         createdAt: Date.now(),
+        sellerName: seller || undefined,
       };
 
       await saveSale(sale);
@@ -251,6 +273,7 @@ export function POS() {
       const lines = [
         name,
         phone ? `Tel: ${phone}` : '',
+        seller ? `Vendedor: ${seller}` : '',
         new Date(sale.createdAt).toLocaleString('es-CU'),
         '------------------------',
         ...sale.items.map(i => `${i.qty}x ${i.name}`),
@@ -278,7 +301,11 @@ export function POS() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' }}>
       <div class={shiftOpen ? 'shift-banner' : 'shift-banner closed'} style={{ flexShrink: 0 }}>
-        {shiftOpen ? '● Turno abierto – puedes vender' : '○ Turno cerrado'}
+        {shiftOpen
+          ? (currentSeller
+            ? `● Turno abierto · ${currentSeller}`
+            : '● Turno abierto – puedes vender')
+          : '○ Turno cerrado'}
       </div>
 
       <div style={{ padding: '8px 12px', flexShrink: 0, background: '#fff', borderBottom: '1px solid var(--border)' }}>
@@ -359,8 +386,36 @@ export function POS() {
           <div class="modal-sheet" onClick={e => e.stopPropagation()}>
             <h2 style={{ fontSize: 18, marginBottom: 8 }}>Abrir turno de caja</h2>
             <p class="muted" style={{ marginBottom: 12 }}>
-              Indica el fondo de caja (efectivo inicial). Puedes dejar <strong>0</strong> si no hay fondo.
+              Elige el vendedor y el fondo de caja (puede ser 0).
             </p>
+
+            <label class="muted">Vendedor</label>
+            {sellers.length > 0 ? (
+              <select
+                class="select"
+                value={selectedSeller}
+                onChange={e => setSelectedSeller((e.target as HTMLSelectElement).value)}
+                style={{ marginBottom: 12 }}
+              >
+                <option value="">— Selecciona —</option>
+                {sellers.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            ) : (
+              <div style={{ marginBottom: 12 }}>
+                <p class="muted" style={{ marginBottom: 8 }}>
+                  No hay vendedores en Ajustes. Puedes abrir el turno igual o añadir nombres en Ajustes.
+                </p>
+                <input
+                  class="input"
+                  placeholder="Nombre del vendedor (opcional)"
+                  value={selectedSeller}
+                  onInput={e => setSelectedSeller((e.target as HTMLInputElement).value)}
+                />
+              </div>
+            )}
+
             <label class="muted">Fondo en CUP</label>
             <input
               class="input"
@@ -395,6 +450,7 @@ export function POS() {
             <h2 style={{ fontSize: 18, marginBottom: 8 }}>Cerrar turno</h2>
             <p class="muted" style={{ marginBottom: 12 }}>Resumen del turno actual antes de cerrar.</p>
             <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              {shiftSummary.sellerName && <p>Vendedor: <strong>{shiftSummary.sellerName}</strong></p>}
               <p>Abierto: {shiftSummary.openedAt ? new Date(shiftSummary.openedAt).toLocaleString('es-CU') : '—'}</p>
               <p>Fondo inicial: <strong>{shiftSummary.floatCUP} CUP</strong></p>
               <p>Ventas: <strong>{shiftSummary.salesCount}</strong></p>
@@ -414,6 +470,7 @@ export function POS() {
         <div class="modal-backdrop">
           <div class="modal-sheet">
             <h2 style={{ fontSize: 18, marginBottom: 4 }}>Cobrar</h2>
+            {currentSeller && <p class="muted" style={{ marginBottom: 4 }}>Vendedor: {currentSeller}</p>}
             <p class="muted" style={{ marginBottom: 4 }}>Subtotal: {subtotal.toFixed(2)} {currency}</p>
             <p style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Total: {total.toFixed(2)} {currency}</p>
 
