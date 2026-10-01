@@ -34,6 +34,8 @@ export function POS() {
   const [paidUSD, setPaidUSD] = useState(0);
   const [rate, setRate] = useState(120);
   const [businessName, setBusinessName] = useState('Cuba POS');
+  const [businessPhone, setBusinessPhone] = useState('');
+  const [ticketFooter, setTicketFooter] = useState('Gracias por su compra');
   const [lastReceipt, setLastReceipt] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
 
@@ -49,6 +51,12 @@ export function POS() {
       const s = await getSettings();
       if (s.rateUSDToCUP) setRate(s.rateUSDToCUP);
       if (s.businessName) setBusinessName(s.businessName);
+      setBusinessPhone(s.businessPhone || '');
+      setTicketFooter(
+        s.ticketFooter != null && String(s.ticketFooter).trim() !== ''
+          ? String(s.ticketFooter).trim()
+          : 'Gracias por su compra'
+      );
     } catch (e) {
       console.error(e);
       showToast('Error al cargar datos', 'error');
@@ -188,6 +196,16 @@ export function POS() {
       return;
     }
     try {
+      // Releer ajustes por si se cambió el pie del ticket
+      const s = await getSettings();
+      const name = s.businessName || businessName;
+      const phone = s.businessPhone || businessPhone;
+      const footer =
+        s.ticketFooter != null && String(s.ticketFooter).trim() !== ''
+          ? String(s.ticketFooter).trim()
+          : ticketFooter || 'Gracias por su compra';
+      const r = s.rateUSDToCUP || rate;
+
       const shift = await getOpenShift();
       const sale: Sale = {
         id: newId(),
@@ -201,7 +219,7 @@ export function POS() {
         total,
         paidCUP,
         paidUSD,
-        changeCUP: currency === 'CUP' ? changeAmount : changeAmount * rate,
+        changeCUP: currency === 'CUP' ? changeAmount : changeAmount * r,
         paymentMethod: paidCUP > 0 && paidUSD > 0 ? 'mixto' : paidUSD > 0 ? 'efectivo_usd' : 'efectivo_cup',
         createdAt: Date.now(),
       };
@@ -211,7 +229,8 @@ export function POS() {
       await enqueue('sale', sale);
 
       const lines = [
-        businessName,
+        name,
+        phone ? `Tel: ${phone}` : '',
         new Date(sale.createdAt).toLocaleString('es-CU'),
         '------------------------',
         ...sale.items.map(i => `${i.qty}x ${i.name}`),
@@ -221,7 +240,7 @@ export function POS() {
         paidCUP > 0 ? `Pagado CUP: ${paidCUP.toFixed(2)}` : '',
         paidUSD > 0 ? `Pagado USD: ${paidUSD.toFixed(2)}` : '',
         changeAmount > 0 ? `Cambio: ${changeAmount.toFixed(2)} ${currency}` : '',
-        'Gracias por su compra',
+        footer,
       ].filter(Boolean).join('\n');
 
       setLastReceipt(lines);
@@ -238,7 +257,6 @@ export function POS() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' }}>
-      {/* Banner + acciones de turno siempre visibles arriba */}
       <div class={shiftOpen ? 'shift-banner' : 'shift-banner closed'} style={{ flexShrink: 0 }}>
         {shiftOpen ? '● Turno abierto – puedes vender' : '○ Turno cerrado'}
       </div>
