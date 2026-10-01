@@ -335,6 +335,7 @@ export async function deductStockForSale(items: SaleItem[]) {
       type: 'out',
       quantity: item.qty,
       reason: 'Venta',
+      createdAt: Date.now(),
     });
   }
 }
