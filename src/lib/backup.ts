@@ -3,10 +3,9 @@ import { Preferences } from '@capacitor/preferences';
 import { Capacitor } from '@capacitor/core';
 import {
   getDB, getSettings, saveSettings, getAllProducts, getAllSales,
-  getAllMovements, getAllShifts, saveProduct, saveSale, addMovement,
-  openShift, Product, Sale, InventoryMovement, Shift, setOnboardingCompleted,
+  getAllMovements, getAllShifts, Product, Sale, InventoryMovement, Shift,
+  setOnboardingCompleted,
 } from './storage';
-import { newId } from './id';
 
 const BACKUP_FILE = 'cuba-pos-backup.json';
 const BACKUP_META_KEY = 'last_backup_at';
@@ -59,19 +58,16 @@ export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: strin
     const payload = await collectPayload();
     const data = JSON.stringify(payload);
 
-    // Preferencias: copia ligera de metadatos (siempre disponible)
     await Preferences.set({ key: BACKUP_META_KEY, value: String(payload.exportedAt) });
     await Preferences.set({ key: 'backup_blob_v1', value: data });
 
     if (!Capacitor.isNativePlatform()) {
-      // En navegador: localStorage como respaldo extra
       try {
         localStorage.setItem('cuba_pos_backup_v1', data);
       } catch { /* quota */ }
       return { ok: true, path: 'Preferences + localStorage' };
     }
 
-    // Nativo: intentar varias carpetas (algunas sobreviven mejor a actualizaciones)
     const dirs = [Directory.Data, Directory.Documents, Directory.External, Directory.Cache];
     let lastPath = '';
     let wrote = false;
@@ -87,10 +83,6 @@ export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: strin
         });
         lastPath = `${dir}/${BACKUP_FILE}`;
         wrote = true;
-        // Data + Documents bastan; External es bonus
-        if (dir === Directory.Documents || dir === Directory.Data) {
-          // seguir para External si es posible
-        }
       } catch (e) {
         console.warn('backup write failed for', dir, e);
       }
@@ -106,7 +98,6 @@ export async function writeBackupToDevice(): Promise<{ ok: boolean; path?: strin
 
 /** Lee el respaldo más reciente disponible. */
 export async function readBackupFromDevice(): Promise<BackupPayload | null> {
-  // 1) Preferences (sobrevive actualización de la app)
   try {
     const { value } = await Preferences.get({ key: 'backup_blob_v1' });
     if (value) {
@@ -140,7 +131,7 @@ export async function readBackupFromDevice(): Promise<BackupPayload | null> {
         if (parsed && parsed.version === 1) return parsed;
       }
     } catch {
-      // no file in this dir
+      // no file
     }
   }
   return null;
@@ -153,8 +144,6 @@ export async function restoreFromPayload(payload: BackupPayload): Promise<void> 
   }
 
   const db = await getDB();
-
-  // Limpiar stores principales
   const storeNames = ['products', 'sales', 'inventoryMovements', 'shifts', 'cashCounts', 'outbox'] as const;
   for (const name of storeNames) {
     try {
@@ -195,12 +184,10 @@ export async function restoreFromPayload(payload: BackupPayload): Promise<void> 
     await Preferences.remove({ key: 'active_shift_id' });
   }
 
-  // Guardar también el blob restaurado
   await Preferences.set({ key: 'backup_blob_v1', value: JSON.stringify(payload) });
   await Preferences.set({ key: BACKUP_META_KEY, value: String(Date.now()) });
 }
 
-/** Exporta JSON para copiar / compartir (también escribe al dispositivo). */
 export async function exportBackupText(): Promise<string> {
   await writeBackupToDevice();
   const payload = await collectPayload();
@@ -213,7 +200,7 @@ export async function importBackupText(text: string): Promise<void> {
   await writeBackupToDevice();
 }
 
-/** Si la BD está vacía pero hay respaldo, devolver el payload para ofrecer restauración. */
+/** Si la BD está vacía pero hay respaldo, devolver el payload. */
 export async function detectEmptyDbWithBackup(): Promise<BackupPayload | null> {
   const products = await getAllProducts();
   const sales = await getAllSales();
@@ -223,7 +210,6 @@ export async function detectEmptyDbWithBackup(): Promise<BackupPayload | null> {
 
 let autoBackupTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Programa un auto-respaldo (debounce 3s). */
 export function scheduleAutoBackup() {
   if (autoBackupTimer) clearTimeout(autoBackupTimer);
   autoBackupTimer = setTimeout(() => {
@@ -237,10 +223,3 @@ export async function getLastBackupAt(): Promise<number | null> {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
-
-// silence unused import warnings for types used only in interfaces
-void newId;
-void openShift;
-void saveProduct;
-void saveSale;
-void addMovement;
