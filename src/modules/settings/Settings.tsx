@@ -4,6 +4,10 @@ import {
   InfoBlockKey, DEFAULT_VISIBLE_INFO, INFO_BLOCK_OPTIONS,
 } from '../../lib/series';
 import { showToast } from '../../lib/toast';
+import {
+  writeBackupToDevice, exportBackupText, importBackupText,
+  getLastBackupAt, scheduleAutoBackup,
+} from '../../lib/backup';
 
 export function Settings() {
   const [form, setForm] = useState<AppSettings>({
@@ -17,6 +21,14 @@ export function Settings() {
   const [sellers, setSellers] = useState<string[]>([]);
   const [newSeller, setNewSeller] = useState('');
   const [saving, setSaving] = useState(false);
+  const [lastBackup, setLastBackup] = useState<number | null>(null);
+  const [importText, setImportText] = useState('');
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  const refreshBackupMeta = async () => {
+    setLastBackup(await getLastBackupAt());
+  };
 
   useEffect(() => {
     getSettings()
@@ -36,6 +48,7 @@ export function Settings() {
         setSellers(Array.isArray(s.sellers) ? s.sellers.filter(Boolean) : []);
       })
       .catch(() => showToast('Error al cargar ajustes', 'error'));
+    refreshBackupMeta();
   }, []);
 
   const toggleInfo = (key: InfoBlockKey) => {
@@ -77,12 +90,73 @@ export function Settings() {
         chartType,
         sellers,
       });
+      scheduleAutoBackup();
       showToast('Ajustes guardados', 'ok');
     } catch (e) {
       console.error(e);
       showToast('No se pudieron guardar los ajustes', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const doBackupNow = async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const r = await writeBackupToDevice();
+      await refreshBackupMeta();
+      if (r.ok) showToast('Respaldo guardado en el dispositivo', 'ok');
+      else showToast(r.error || 'Error al respaldar', 'error');
+    } catch (e) {
+      console.error(e);
+      showToast('Error al respaldar', 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const doExportCopy = async () => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      const text = await exportBackupText();
+      await refreshBackupMeta();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        showToast('Respaldo copiado al portapapeles', 'ok');
+      } else {
+        setImportText(text);
+        setShowImport(true);
+        showToast('Copia el texto del respaldo manualmente', 'info');
+      }
+    } catch (e) {
+      console.error(e);
+      showToast('Error al exportar', 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const doImport = async () => {
+    if (backupBusy) return;
+    const text = importText.trim();
+    if (!text) {
+      showToast('Pega el JSON del respaldo', 'info');
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      await importBackupText(text);
+      setShowImport(false);
+      setImportText('');
+      await refreshBackupMeta();
+      showToast('Datos restaurados. Reinicia la pantalla si hace falta.', 'ok');
+    } catch (e) {
+      console.error(e);
+      showToast('JSON inválido o corrupto', 'error');
+    } finally {
+      setBackupBusy(false);
     }
   };
 
@@ -133,6 +207,28 @@ export function Settings() {
         <p class="muted" style={{ marginBottom: 16 }}>
           Este texto aparece al final de cada ticket de venta.
         </p>
+      </div>
+
+      <div class="card">
+        <h2 style={{ fontSize: 17, marginBottom: 6 }}>Datos y respaldos</h2>
+        <p class="muted" style={{ marginBottom: 10 }}>
+          Los datos se guardan en este teléfono. Al <strong>actualizar</strong> la app se conservan.
+          Antes de <strong>desinstalar</strong>, exporta un respaldo y guárdalo (WhatsApp, notas, USB).
+        </p>
+        {lastBackup && (
+          <p class="muted" style={{ marginBottom: 10 }}>
+            Último respaldo automático: {new Date(lastBackup).toLocaleString('es-CU')}
+          </p>
+        )}
+        <button type="button" class="btn btn-block" disabled={backupBusy} onClick={doBackupNow}>
+          {backupBusy ? 'Guardando…' : 'Guardar respaldo ahora'}
+        </button>
+        <button type="button" class="btn btn-secondary btn-block" style={{ marginTop: 8 }} disabled={backupBusy} onClick={doExportCopy}>
+          Copiar respaldo (JSON)
+        </button>
+        <button type="button" class="btn btn-secondary btn-block" style={{ marginTop: 8 }} onClick={() => setShowImport(true)}>
+          Restaurar desde texto JSON
+        </button>
       </div>
 
       <div class="card">
@@ -255,6 +351,31 @@ export function Settings() {
           Cuba POS Universal · Offline-first · Multimoneda CUP/USD · Compatible Android 5+.
         </p>
       </div>
+
+      {showImport && (
+        <div class="modal-backdrop">
+          <div class="modal-sheet">
+            <h2 style={{ fontSize: 18, marginBottom: 8 }}>Restaurar respaldo</h2>
+            <p class="muted" style={{ marginBottom: 10 }}>
+              Pega aquí el JSON del respaldo (copiado antes). Esto reemplaza los datos actuales.
+            </p>
+            <textarea
+              class="input"
+              rows={8}
+              value={importText}
+              onInput={e => setImportText((e.target as HTMLTextAreaElement).value)}
+              placeholder="{ ... }"
+              style={{ marginBottom: 12, minHeight: 140, fontFamily: 'monospace', fontSize: 12 }}
+            />
+            <div class="grid-2">
+              <button type="button" class="btn btn-secondary" onClick={() => setShowImport(false)} disabled={backupBusy}>Cancelar</button>
+              <button type="button" class="btn" onClick={doImport} disabled={backupBusy}>
+                {backupBusy ? 'Restaurando…' : 'Restaurar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
