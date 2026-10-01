@@ -60,7 +60,7 @@
   padding: 10px 2px;
   text-decoration: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
 }
@@ -101,7 +101,7 @@
 .btn-block { width: 100%; }
 .btn-sm { padding: 8px 12px; min-height: 40px; font-size: 13px; }
 
-.input, .select {
+.input, .select, textarea.input {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
@@ -109,6 +109,7 @@
   font-size: 16px;
   min-height: 48px;
   background: #fff;
+  font-family: inherit;
 }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -195,6 +196,61 @@
   background: #fef3c7;
   border-color: #fde68a;
   color: #92400e;
+}
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px;
+  height: 140px;
+  padding-top: 8px;
+}
+.bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+.bar-value {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+.bar-track {
+  flex: 1;
+  width: 100%;
+  max-width: 28px;
+  background: #f1f5f9;
+  border-radius: 6px 6px 2px 2px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.bar-fill {
+  width: 100%;
+  background: linear-gradient(180deg, #14b8a6, #0f766e);
+  border-radius: 6px 6px 2px 2px;
+  min-height: 4px;
+}
+.bar-label {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 6px;
+  text-align: center;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1024px) {

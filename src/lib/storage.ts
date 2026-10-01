@@ -84,6 +84,7 @@ export interface AppSettings {
   rateUSDToCUP?: number;
   ticketFooter?: string;
   visibleStats?: StatKey[];
+  visibleInfo?: string[];
 }
 
 interface CubaPOSDB extends DBSchema {
@@ -227,8 +228,6 @@ export async function getOpenShift(): Promise<Shift | undefined> {
     const all = await db.getAll('shifts');
     const open = all.find(s => s.status === 'open');
     if (open) return open;
-
-    // Respaldo por Preferences
     const { value } = await Preferences.get({ key: ACTIVE_SHIFT_KEY });
     if (value) {
       const s = await db.get('shifts', value);
@@ -281,7 +280,6 @@ export async function closeShift(shiftId: string): Promise<void> {
   }
 }
 
-/** Cierra el turno abierto sin necesidad de conocer el id */
 export async function closeOpenShift(): Promise<Shift | null> {
   const open = await getOpenShift();
   if (!open) {
@@ -337,7 +335,6 @@ export async function deductStockForSale(items: SaleItem[]) {
       type: 'out',
       quantity: item.qty,
       reason: 'Venta',
-      createdAt: Date.now(),
     });
   }
 }
@@ -367,7 +364,6 @@ export function periodRange(period: PeriodKey): { from: number; to: number } {
     x.setHours(0, 0, 0, 0);
     return x.getTime();
   };
-
   if (period === 'today') return { from: startOfDay(now), to };
   if (period === 'yesterday') {
     const y = new Date(now);
