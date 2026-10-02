@@ -55,6 +55,11 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
+      - name: Patch Android (launchMode + no APK intents)
+        run: |
+          chmod +x scripts/patch-android.sh
+          ./scripts/patch-android.sh
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 

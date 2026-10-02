@@ -5,17 +5,23 @@ const config: CapacitorConfig = {
   appName: 'Cuba POS Universal',
   webDir: 'dist',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
   },
   android: {
     minWebViewVersion: 61,
-    allowMixedContent: true
+    allowMixedContent: true,
+    // Evita comportamientos raros de foco / multitarea en algunos dispositivos
+    backgroundColor: '#f1f5f9',
   },
   plugins: {
     CapacitorHttp: {
-      enabled: true
-    }
-  }
+      enabled: true,
+    },
+    // No manejar enlaces externos como si fueran de la app
+    App: {
+      // sin deep links configurados a propósito
+    },
+  },
 };
 
 export default config;
