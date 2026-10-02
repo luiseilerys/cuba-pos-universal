@@ -9,6 +9,7 @@ import { Inventory } from './modules/inventory/Inventory';
 import { Stats } from './modules/stats/Stats';
 import { NetworkStatus } from './components/NetworkStatus';
 import { ToastHost } from './components/ToastHost';
+import { NavIcon } from './components/Icon';
 import { isOnboardingCompleted } from './lib/storage';
 import { startAutoSync } from './offline/syncEngine';
 import {
@@ -19,11 +20,17 @@ import { showToast } from './lib/toast';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
+function navClass(path: string, current: string) {
+  if (path === '/') return current === '/' ? 'active' : '';
+  return current.indexOf(path) === 0 ? 'active' : '';
+}
+
 export function App() {
   const [ready, setReady] = useState(false);
   const [onboarded, setOnboarded] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<BackupPayload | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [route, setRoute] = useState('/');
 
   useEffect(() => {
     (async () => {
@@ -32,12 +39,10 @@ export function App() {
         setOnboarded(done);
         if (done) startAutoSync();
 
-        // Si no hay datos locales pero sí respaldo → ofrecer restaurar
         const backup = await detectEmptyDbWithBackup();
         if (backup && (backup.products?.length > 0 || backup.sales?.length > 0)) {
           setPendingRestore(backup);
         } else {
-          // Auto-respaldo al arrancar si ya hay datos
           scheduleAutoBackup();
         }
       } catch (e) {
@@ -47,7 +52,6 @@ export function App() {
       }
     })();
 
-    // Al pasar a segundo plano: guardar respaldo
     let handle: { remove: () => void } | undefined;
     if (Capacitor.isNativePlatform()) {
       CapApp.addListener('appStateChange', ({ isActive }) => {
@@ -140,7 +144,7 @@ export function App() {
       ) : (
         <div class="app-shell">
           <NetworkStatus />
-          <Router>
+          <Router onChange={e => setRoute(e.url || '/')}>
             <Route path="/" component={Dashboard} />
             <Route path="/pos" component={POS} />
             <Route path="/inventory" component={Inventory} />
@@ -149,12 +153,12 @@ export function App() {
             <Route path="/settings" component={Settings} />
           </Router>
           <nav class="bottom-nav">
-            <a href="/">Inicio</a>
-            <a href="/pos">POS</a>
-            <a href="/inventory">Inventario</a>
-            <a href="/stats">Info</a>
-            <a href="/cash">Arqueo</a>
-            <a href="/settings">Ajustes</a>
+            <a href="/" class={navClass('/', route)}><NavIcon name="home" label="Inicio" /></a>
+            <a href="/pos" class={navClass('/pos', route)}><NavIcon name="cart" label="POS" /></a>
+            <a href="/inventory" class={navClass('/inventory', route)}><NavIcon name="box" label="Inventario" /></a>
+            <a href="/stats" class={navClass('/stats', route)}><NavIcon name="chart" label="Info" /></a>
+            <a href="/cash" class={navClass('/cash', route)}><NavIcon name="cash" label="Arqueo" /></a>
+            <a href="/settings" class={navClass('/settings', route)}><NavIcon name="settings" label="Ajustes" /></a>
           </nav>
         </div>
       )}
